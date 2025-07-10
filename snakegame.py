@@ -68,20 +68,20 @@ class SnakeGame:
 
         return img
 
-# --- Streamlit Session State Init ---
+# --- Streamlit State Initialization ---
 if "game" not in st.session_state:
     st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
 if "top_score" not in st.session_state:
     st.session_state["top_score"] = 0
 
-# --- Restart Button ---
+# --- UI: Restart Button ---
 col1, col2 = st.columns([1, 3])
 with col1:
     if st.button("🔄 Restart"):
         st.session_state["top_score"] = max(st.session_state["top_score"], st.session_state["game"].score)
         st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
 
-# --- Title and Instructions ---
+# --- UI: Title & Instructions ---
 st.title("🐍 Snake Game - Hand Gesture Controlled")
 st.markdown("""
 Control the snake using your **index finger** 🖐️  
@@ -89,16 +89,16 @@ Eat 🍎 food and avoid hitting yourself.
 No buttons required — just move your hand.
 """)
 
-# --- Streamlit Video Class ---
+# --- Video Transformer Using recv() ---
 class GameTransformer(VideoTransformerBase):
     def __init__(self):
-        self.detector = HandDetector(detectionCon=0.45, maxHands=1)
+        self.detector = HandDetector(detectionCon=0.5, maxHands=1)
         self.prev_time = time.time()
 
-    def transform(self, frame):
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         curr_time = time.time()
-        if curr_time - self.prev_time < 0.1:  # ~10 FPS
-            return frame.to_ndarray(format="bgr24")
+        if curr_time - self.prev_time < 0.1:
+            return frame
 
         self.prev_time = curr_time
         img = frame.to_ndarray(format="bgr24")
@@ -110,7 +110,8 @@ class GameTransformer(VideoTransformerBase):
             x, y = lmList[8][0], lmList[8][1]
             img = st.session_state["game"].update((x, y), img)
         else:
-            cvzone.putTextRect(img, "Show Your Hand!", [200, 250], scale=2, thickness=2, offset=8, colorR=(0, 0, 0))
+            cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8, colorR=(0, 0, 0))
+            img = st.session_state["game"].update(st.session_state["game"].prev_snake_head, img)
 
         current_score = st.session_state["game"].score
         if current_score > st.session_state["top_score"]:
@@ -122,35 +123,29 @@ class GameTransformer(VideoTransformerBase):
         if st.session_state["game"].game_over:
             cvzone.putTextRect(img, "Game Over", [380, 200], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
 
-        return img
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# --- WebRTC Streamer ---
+# --- Streamlit WebRTC Streamer ---
 webrtc_streamer(
     key="snake-game",
     video_transformer_factory=GameTransformer,
     media_stream_constraints={
-        "video": {
-            "width": {"ideal": 1280},
-            "height": {"ideal": 720}
-        },
+        "video": {"width": {"ideal": 1280}, "height": {"ideal": 720}},
         "audio": False,
     },
     async_processing=True
 )
 
-# --- Optional TTS on Game Over ---
+# --- TTS Game Over ---
 if st.session_state["game"].game_over:
-    st.markdown(
-        """
-        <script>
-        if (!window.hasSpoken) {
-            const utter = new SpeechSynthesisUtterance("Game Over. Click Restart to play again.");
-            speechSynthesis.speak(utter);
-            window.hasSpoken = true;
-        }
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown("""
+    <script>
+    if (!window.hasSpoken) {
+        const utter = new SpeechSynthesisUtterance("Game Over. Click Restart to play again.");
+        speechSynthesis.speak(utter);
+        window.hasSpoken = true;
+    }
+    </script>
+    """, unsafe_allow_html=True)
 else:
     st.markdown("<script>window.hasSpoken = false;</script>", unsafe_allow_html=True)
