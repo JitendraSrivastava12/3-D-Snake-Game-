@@ -58,25 +58,30 @@ class SnakeGame:
             self.length.pop(0)
             self.points.pop(0)
 
-        for food_index, (rx, ry) in enumerate(self.food_points):
-            if rx - self.wfood // 2 < cx < rx + self.wfood // 2 and ry - self.hfood // 2 < cy < ry + self.hfood // 2:
-                self.food_points[food_index] = (random.randint(100, 1000), random.randint(100, 500))
-                self.allowed_length += 40
-                self.score += 1
-
+        # Draw snake as a line
         for i in range(1, len(self.points)):
-            cv2.circle(img, tuple(self.points[i - 1]), 10, (255, 0, 0), -1)
+            cv2.line(img, tuple(self.points[i - 1]), tuple(self.points[i]), (0, 255, 0), 6)
 
+        # Draw snake head
         if self.points:
             cv2.circle(img, tuple(self.points[-1]), 10, (0, 0, 255), -1)
 
-        if len(self.points) >= 3:
-            pts = np.array(self.points[:-2], np.int32).reshape(-1, 1, 2)
-            cv2.polylines(img, [pts], False, (0, 255, 0), 6)
+        # Collision detection with itself
+        if len(self.points) >= 10:
+            pts = np.array(self.points[:-5], np.int32).reshape(-1, 1, 2)
             mdist = cv2.pointPolygonTest(pts, (cx, cy), True)
-            if -1 <= mdist <= 1:
+            if mdist > -5 and mdist < 5:
                 self.game_over = True
+                return img
 
+        # Check collision with food
+        for i, (rx, ry) in enumerate(self.food_points):
+            if rx - self.wfood // 2 < cx < rx + self.wfood // 2 and ry - self.hfood // 2 < cy < ry + self.hfood // 2:
+                self.food_points[i] = (random.randint(100, 1000), random.randint(100, 500))
+                self.allowed_length += 40
+                self.score += 1
+
+        # Draw food
         for rx, ry in self.food_points:
             try:
                 if self.food.shape[2] == 4:
@@ -92,7 +97,7 @@ class SnakeGame:
         return img
 
 
-# ---------- MediaPipe Hand Tracking Processor ----------
+# ---------- MediaPipe Processor ----------
 class GameProcessor(VideoProcessorBase):
     def __init__(self):
         self.hands = mp.solutions.hands.Hands(
@@ -145,6 +150,7 @@ class GameProcessor(VideoProcessorBase):
 # ---------- Streamlit UI ----------
 st.set_page_config(page_title="Snake Game", layout="centered")
 st.title("🐍 Snake Game - Hand Gesture Controlled")
+st.markdown("Use your **index finger** 🖐️ to move the snake. Eat 🍎 and avoid crashing!")
 
 # Global state to trigger reset
 if "reset_game" not in st.session_state:
