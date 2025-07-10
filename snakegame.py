@@ -25,6 +25,7 @@ class SnakeGame:
         self.food_points = []
         self.food_location()
         self.score = 0
+        self.top_score = 0
 
     def food_location(self):
         self.food_points = [(random.randint(100, 1000), random.randint(100, 500)) for _ in range(self.food_count)]
@@ -69,27 +70,12 @@ class SnakeGame:
         return img
 
 
-# ---------- Streamlit UI ----------
-st.set_page_config(page_title="Snake Game", layout="centered")
-
-if "game" not in st.session_state:
-    st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
-if "top_score" not in st.session_state:
-    st.session_state["top_score"] = 0
-
-st.title("🐍 Snake Game - Hand Gesture Controlled")
-st.markdown("Use your **index finger** 🖐️ to control the snake. Eat 🍎 and avoid crashing!")
-
-if st.button("🔄 Restart Game"):
-    st.session_state["top_score"] = max(st.session_state["top_score"], st.session_state["game"].score)
-    st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
-
-
-# ---------- Video Processor Class ----------
+# ---------- Video Processor ----------
 class GameProcessor(VideoProcessorBase):
     def __init__(self):
         self.detector = HandDetector(detectionCon=0.5, maxHands=1)
         self.prev_time = time.time()
+        self.game = SnakeGame("apple_00.png", food_count=3)
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
@@ -98,40 +84,36 @@ class GameProcessor(VideoProcessorBase):
         curr_time = time.time()
         run_game = (curr_time - self.prev_time) > 0.1
 
-        try:
-            if "game" not in st.session_state:
-                st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
+        if run_game:
+            self.prev_time = curr_time
+            hands, _ = self.detector.findHands(img, draw=False)
+            if hands:
+                lmList = hands[0]["lmList"]
+                x, y = lmList[8][0], lmList[8][1]
+                img = self.game.update((x, y), img)
+            else:
+                cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
+                img = self.game.update(self.game.prev_snake_head, img)
 
-            if run_game:
-                self.prev_time = curr_time
-                hands, _ = self.detector.findHands(img, draw=False)
-                if hands:
-                    lmList = hands[0]["lmList"]
-                    x, y = lmList[8][0], lmList[8][1]
-                    img = st.session_state["game"].update((x, y), img)
-                else:
-                    cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
-                    img = st.session_state["game"].update(st.session_state["game"].prev_snake_head, img)
+            self.game.top_score = max(self.game.top_score, self.game.score)
+            cvzone.putTextRect(img, f"Score: {self.game.score}", [50, 30], scale=2, thickness=2, offset=5)
+            cvzone.putTextRect(img, f"Top: {self.game.top_score}", [900, 30], scale=2, thickness=2, offset=5)
 
-                score = st.session_state["game"].score
-                st.session_state["top_score"] = max(st.session_state["top_score"], score)
-
-                cvzone.putTextRect(img, f"Score: {score}", [50, 30], scale=2, thickness=2, offset=5)
-                cvzone.putTextRect(img, f"Top: {st.session_state['top_score']}", [900, 30], scale=2, thickness=2, offset=5)
-
-                if st.session_state["game"].game_over:
-                    cvzone.putTextRect(img, "Game Over", [400, 250], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
-
-        except Exception as e:
-            print("[ERROR in recv()]", e)
+            if self.game.game_over:
+                cvzone.putTextRect(img, "Game Over", [400, 250], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
+# ---------- Streamlit UI ----------
+st.set_page_config(page_title="Snake Game", layout="centered")
+st.title("🐍 Snake Game - Hand Gesture Controlled")
+st.markdown("Use your **index finger** 🖐️ to control the snake. Eat 🍎 and avoid crashing!")
+
 # ---------- WebRTC Camera ----------
 webrtc_streamer(
     key="snake-game",
-    video_processor_factory=GameProcessor,  # ✅ updated for latest version
+    video_processor_factory=GameProcessor,
     media_stream_constraints={
         "video": {"width": {"ideal": 1280}, "height": {"ideal": 720}},
         "audio": False
