@@ -5,6 +5,7 @@ import cvzone
 import random
 import streamlit as st
 import av
+import time
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from cvzone.HandTrackingModule import HandDetector
 
@@ -26,7 +27,7 @@ class SnakeGame:
         self.score = 0
 
     def food_location(self):
-        self.food_points = [(random.randint(100, 600), random.randint(100, 400)) for _ in range(self.food_count)]
+        self.food_points = [(random.randint(100, 1000), random.randint(100, 500)) for _ in range(self.food_count)]
 
     def update(self, current_head, img):
         px, py = self.prev_snake_head
@@ -44,7 +45,7 @@ class SnakeGame:
 
         for food_index, (rx, ry) in enumerate(self.food_points):
             if rx - self.wfood // 2 < cx < rx + self.wfood // 2 and ry - self.hfood // 2 < cy < ry + self.hfood // 2:
-                self.food_points[food_index] = (random.randint(100, 600), random.randint(100, 400))
+                self.food_points[food_index] = (random.randint(100, 1000), random.randint(100, 500))
                 self.allowed_length += 40
                 self.score += 1
 
@@ -85,17 +86,24 @@ st.title("🐍 Snake Game - Hand Gesture Controlled")
 st.markdown("""
 Control the snake using your **index finger** 🖐️  
 Eat 🍎 food and avoid hitting yourself.  
-**Pinch gesture** not required — just track finger movement.
+No buttons required — just move your hand.
 """)
 
 # --- Streamlit Video Class ---
 class GameTransformer(VideoTransformerBase):
     def __init__(self):
-        self.detector = HandDetector(detectionCon=0.5, maxHands=1)
+        self.detector = HandDetector(detectionCon=0.45, maxHands=1)
+        self.prev_time = time.time()
 
     def transform(self, frame):
+        curr_time = time.time()
+        if curr_time - self.prev_time < 0.1:  # ~10 FPS
+            return frame.to_ndarray(format="bgr24")
+
+        self.prev_time = curr_time
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
+
         hands, _ = self.detector.findHands(img, draw=False)
         if hands:
             lmList = hands[0]["lmList"]
@@ -104,17 +112,15 @@ class GameTransformer(VideoTransformerBase):
         else:
             cvzone.putTextRect(img, "Show Your Hand!", [200, 250], scale=2, thickness=2, offset=8, colorR=(0, 0, 0))
 
-        # Update top score
         current_score = st.session_state["game"].score
         if current_score > st.session_state["top_score"]:
             st.session_state["top_score"] = current_score
 
-        # Show scores
         cvzone.putTextRect(img, f"Score: {current_score}", [50, 30], scale=2, thickness=2, offset=5)
-        cvzone.putTextRect(img, f"Top: {st.session_state['top_score']}", [400, 30], scale=2, thickness=2, offset=5)
+        cvzone.putTextRect(img, f"Top: {st.session_state['top_score']}", [900, 30], scale=2, thickness=2, offset=5)
 
         if st.session_state["game"].game_over:
-            cvzone.putTextRect(img, "Game Over", [180, 200], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
+            cvzone.putTextRect(img, "Game Over", [380, 200], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
 
         return img
 
@@ -123,7 +129,10 @@ webrtc_streamer(
     key="snake-game",
     video_transformer_factory=GameTransformer,
     media_stream_constraints={
-        "video": {"width": {"ideal": 640}, "height": {"ideal": 480}},
+        "video": {
+            "width": {"ideal": 1280},
+            "height": {"ideal": 720}
+        },
         "audio": False,
     },
     async_processing=True
