@@ -23,9 +23,9 @@ class SnakeGame:
 
         self.food = cv2.imread(path_food, cv2.IMREAD_UNCHANGED)
         if self.food is None:
-            print("⚠️ apple_00.png not found. Using green box as food.")
+            print("⚠️ apple_00.png not found. Using green box.")
             self.food = np.zeros((50, 50, 4), dtype=np.uint8)
-            self.food[:, :, 1] = 255
+            self.food[:, :, 1] = 255  # Green channel
             self.hfood, self.wfood = 50, 50
         else:
             self.food = cv2.resize(self.food, (50, 50))
@@ -81,11 +81,17 @@ class SnakeGame:
                 if self.food.shape[2] == 4:
                     overlay_img = self.food[:, :, :3]
                     mask = self.food[:, :, 3] > 0
-                    for c in range(3):
-                        img[ry - 25:ry + 25, rx - 25:rx + 25, c][mask] = overlay_img[:, :, c][mask]
+                    x1, x2 = rx - 25, rx + 25
+                    y1, y2 = ry - 25, ry + 25
+                    if 0 <= x1 and x2 <= img.shape[1] and 0 <= y1 and y2 <= img.shape[0]:
+                        for c in range(3):
+                            img[y1:y2, x1:x2, c][mask] = overlay_img[:, :, c][mask]
+                    else:
+                        cv2.rectangle(img, (rx - 20, ry - 20), (rx + 20, ry + 20), (0, 255, 0), -1)
                 else:
                     cv2.rectangle(img, (rx - 25, ry - 25), (rx + 25, ry + 25), (0, 255, 0), -1)
-            except:
+            except Exception as e:
+                print("⚠️ Failed to draw food:", e)
                 cv2.rectangle(img, (rx - 20, ry - 20), (rx + 20, ry + 20), (0, 255, 0), -1)
 
         return img
