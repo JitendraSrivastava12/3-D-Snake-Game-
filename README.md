@@ -31,8 +31,8 @@
 
   <h3>🔧 Installation</h3>
   <pre><code>
-git clone https://github.com/YOUR_USERNAME/gesture-snake-3d.git
-cd gesture-snake-3d
+git clone https://github.com/JitendraSrivastava12/3-D-Snake-Game.git
+cd 3-D-Snake-Game
 pip install -r requirements.txt
   </code></pre>
 
