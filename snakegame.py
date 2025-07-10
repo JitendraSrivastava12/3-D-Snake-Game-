@@ -10,7 +10,7 @@ import mediapipe as mp
 
 # ---------- Snake Game ----------
 class SnakeGame:
-    def __init__(self, path_food="apple_00.png", food_count=3):
+    def __init__(self, path_food="apple_00.png", food_count=5):
         self.points = []
         self.length = []
         self.current_length = 0
@@ -104,7 +104,7 @@ class GameProcessor(VideoProcessorBase):
         self.reset_game()
 
     def reset_game(self):
-        self.game = SnakeGame()
+        self.game = SnakeGame(path_food="apple_00.png", food_count=5)
         self.last_time = time.time()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
@@ -172,6 +172,5 @@ webrtc_ctx = webrtc_streamer(
     async_processing=True
 )
 
-# ✅ Working Restart Button
 if st.button("🔁 Restart Game") and "ref" in processor_instance:
     processor_instance["ref"].should_reset = True
