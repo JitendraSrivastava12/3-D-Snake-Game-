@@ -40,6 +40,9 @@ class SnakeGame:
     def update(self, current_head, img):
         px, py = self.prev_snake_head
         cx, cy = current_head
+        cx = int(0.7 * px + 0.3 * cx)  # Smooth X
+        cy = int(0.7 * py + 0.3 * cy)  # Smooth Y
+
         dist = math.hypot(px - cx, py - cy)
         self.length.append(dist)
         self.current_length += dist
@@ -72,7 +75,6 @@ class SnakeGame:
 
         for rx, ry in self.food_points:
             try:
-                # fallback draw if PNG fails
                 if self.food.shape[2] == 4:
                     overlay_img = self.food[:, :, :3]
                     mask = self.food[:, :, 3] > 0
@@ -86,17 +88,20 @@ class SnakeGame:
         return img
 
 
-# ---------- Raw MediaPipe Hand Tracking (No cvzone) ----------
+# ---------- Raw MediaPipe Processor ----------
 class GameProcessor(VideoProcessorBase):
     def __init__(self):
         self.hands = mp.solutions.hands.Hands(
             static_image_mode=False,
             max_num_hands=1,
-            model_complexity=0,         # ✅ CPU only (no GPU)
+            model_complexity=0,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
         self.draw = mp.solutions.drawing_utils
+        self.reset_game()
+
+    def reset_game(self):
         self.game = SnakeGame()
         self.last_time = time.time()
 
@@ -106,7 +111,7 @@ class GameProcessor(VideoProcessorBase):
 
         try:
             current_time = time.time()
-            if current_time - self.last_time > 0.1:
+            if current_time - self.last_time > 0.03:
                 self.last_time = current_time
 
                 rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -138,14 +143,32 @@ class GameProcessor(VideoProcessorBase):
 # ---------- Streamlit UI ----------
 st.set_page_config(page_title="Snake Game", layout="centered")
 st.title("🐍 Snake Game - Hand Gesture Controlled")
-st.markdown("Use your **index finger** 🖐️ to move the snake. Eat 🍎 and avoid crashing!")
 
-webrtc_streamer(
+# Global state to trigger reset
+if "reset_game" not in st.session_state:
+    st.session_state.reset_game = False
+
+if st.button("🔁 Restart Game"):
+    st.session_state.reset_game = True
+
+processor_instance = {}
+
+def processor_factory():
+    processor = GameProcessor()
+    processor_instance["ref"] = processor
+    return processor
+
+ctx = webrtc_streamer(
     key="snake-game",
-    video_processor_factory=GameProcessor,
+    video_processor_factory=processor_factory,
     media_stream_constraints={
         "video": {"width": {"ideal": 1280}, "height": {"ideal": 720}},
         "audio": False
     },
     async_processing=True
 )
+
+# Handle restart after app is initialized
+if st.session_state.reset_game and "ref" in processor_instance:
+    processor_instance["ref"].reset_game()
+    st.session_state.reset_game = False
