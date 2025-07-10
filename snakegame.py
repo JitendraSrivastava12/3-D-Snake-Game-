@@ -9,7 +9,7 @@ import time
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from cvzone.HandTrackingModule import HandDetector
 
-# ---------- Snake Game Class ----------
+# ---------- Snake Game ----------
 class SnakeGame:
     def __init__(self, path_food="apple_00.png", food_count=3):
         self.points = []
@@ -26,7 +26,7 @@ class SnakeGame:
         if self.food is None:
             print("⚠️ apple_00.png not found. Using green box as food.")
             self.food = np.zeros((50, 50, 4), dtype=np.uint8)
-            self.food[:, :, 1] = 255  # Green color
+            self.food[:, :, 1] = 255
             self.hfood, self.wfood = 50, 50
         else:
             self.food = cv2.resize(self.food, (50, 50))
@@ -39,7 +39,6 @@ class SnakeGame:
         self.food_points = [(random.randint(100, 1000), random.randint(100, 500)) for _ in range(self.food_count)]
 
     def update(self, current_head, img):
-        print("[update] Head:", current_head)
         px, py = self.prev_snake_head
         cx, cy = current_head
         dist = math.hypot(px - cx, py - cy)
@@ -58,7 +57,6 @@ class SnakeGame:
                 self.food_points[food_index] = (random.randint(100, 1000), random.randint(100, 500))
                 self.allowed_length += 40
                 self.score += 1
-                print("[food] Eaten! Score:", self.score)
 
         if len(self.points) > 1:
             for i in range(1, len(self.points)):
@@ -78,10 +76,10 @@ class SnakeGame:
             try:
                 img = cvzone.overlayPNG(img, self.food, (rx - self.wfood // 2, ry - self.hfood // 2))
             except:
-                # Fallback if overlayPNG fails
                 cv2.rectangle(img, (rx - 20, ry - 20), (rx + 20, ry + 20), (0, 255, 0), -1)
 
         return img
+
 
 # ---------- Video Processor ----------
 class GameProcessor(VideoProcessorBase):
@@ -94,18 +92,21 @@ class GameProcessor(VideoProcessorBase):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
 
-        print("[recv] Frame received")
-
         try:
             current_time = time.time()
             if current_time - self.last_time > 0.1:
                 self.last_time = current_time
 
-                hands, _ = self.detector.findHands(img, draw=False)
-                if hands:
-                    lmList = hands[0]["lmList"]
-                    x, y = lmList[8][0], lmList[8][1]
-                    img = self.game.update((x, y), img)
+                result = self.detector.findHands(img, draw=False)
+                if result and isinstance(result, tuple):
+                    hands = result[0]
+                    if hands:
+                        lmList = hands[0]["lmList"]
+                        x, y = lmList[8][0], lmList[8][1]
+                        img = self.game.update((x, y), img)
+                    else:
+                        img = self.game.update(self.game.prev_snake_head, img)
+                        cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
                 else:
                     img = self.game.update(self.game.prev_snake_head, img)
                     cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
