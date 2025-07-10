@@ -39,8 +39,7 @@ class SnakeGame:
 
     def update(self, current_head, img):
         if self.game_over:
-            cv2.putText(img, "Game Over", (400, 250), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 0, 255), 5)
-            return img
+            return img  # Do not update anything after game over
 
         px, py = self.prev_snake_head
         cx, cy = current_head
@@ -58,15 +57,14 @@ class SnakeGame:
             self.length.pop(0)
             self.points.pop(0)
 
-        # Draw snake as a line
+        # Draw snake line
         for i in range(1, len(self.points)):
             cv2.line(img, tuple(self.points[i - 1]), tuple(self.points[i]), (0, 255, 0), 6)
 
-        # Draw snake head
         if self.points:
-            cv2.circle(img, tuple(self.points[-1]), 10, (0, 0, 255), -1)
+            cv2.circle(img, tuple(self.points[-1]), 10, (0, 0, 255), -1)  # Head
 
-        # Collision detection with itself
+        # Collision detection
         if len(self.points) >= 10:
             pts = np.array(self.points[:-5], np.int32).reshape(-1, 1, 2)
             mdist = cv2.pointPolygonTest(pts, (cx, cy), True)
@@ -74,7 +72,7 @@ class SnakeGame:
                 self.game_over = True
                 return img
 
-        # Check collision with food
+        # Eat food
         for i, (rx, ry) in enumerate(self.food_points):
             if rx - self.wfood // 2 < cx < rx + self.wfood // 2 and ry - self.hfood // 2 < cy < ry + self.hfood // 2:
                 self.food_points[i] = (random.randint(100, 1000), random.randint(100, 500))
@@ -88,95 +86,4 @@ class SnakeGame:
                     overlay_img = self.food[:, :, :3]
                     mask = self.food[:, :, 3] > 0
                     for c in range(3):
-                        img[ry - 25:ry + 25, rx - 25:rx + 25, c][mask] = overlay_img[:, :, c][mask]
-                else:
-                    cv2.rectangle(img, (rx - 25, ry - 25), (rx + 25, ry + 25), (0, 255, 0), -1)
-            except:
-                cv2.rectangle(img, (rx - 20, ry - 20), (rx + 20, ry + 20), (0, 255, 0), -1)
-
-        return img
-
-
-# ---------- MediaPipe Processor ----------
-class GameProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.hands = mp.solutions.hands.Hands(
-            static_image_mode=False,
-            max_num_hands=1,
-            model_complexity=0,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
-        self.reset_game()
-
-    def reset_game(self):
-        self.game = SnakeGame()
-        self.last_time = time.time()
-
-    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        img = frame.to_ndarray(format="bgr24")
-        img = cv2.flip(img, 1)
-
-        try:
-            current_time = time.time()
-            if current_time - self.last_time > 0.03:
-                self.last_time = current_time
-
-                rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                results = self.hands.process(rgb)
-
-                if results.multi_hand_landmarks:
-                    hand = results.multi_hand_landmarks[0]
-                    h, w, _ = img.shape
-                    x = int(hand.landmark[8].x * w)
-                    y = int(hand.landmark[8].y * h)
-                    img = self.game.update((x, y), img)
-                else:
-                    img = self.game.update(self.game.prev_snake_head, img)
-                    cv2.putText(img, "Show Your Hand!", (300, 300), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
-
-                if not self.game.game_over:
-                    self.game.top_score = max(self.game.top_score, self.game.score)
-
-                cv2.putText(img, f"Score: {self.game.score}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
-                cv2.putText(img, f"Top: {self.game.top_score}", (900, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 255), 3)
-
-        except Exception as e:
-            print("❌ recv error:", e)
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-
-# ---------- Streamlit UI ----------
-st.set_page_config(page_title="Snake Game", layout="centered")
-st.title("🐍 Snake Game - Hand Gesture Controlled")
-st.markdown("Use your **index finger** 🖐️ to move the snake. Eat 🍎 and avoid crashing!")
-
-# Global state to trigger reset
-if "reset_game" not in st.session_state:
-    st.session_state.reset_game = False
-
-if st.button("🔁 Restart Game"):
-    st.session_state.reset_game = True
-
-processor_instance = {}
-
-def processor_factory():
-    processor = GameProcessor()
-    processor_instance["ref"] = processor
-    return processor
-
-ctx = webrtc_streamer(
-    key="snake-game",
-    video_processor_factory=processor_factory,
-    media_stream_constraints={
-        "video": {"width": {"ideal": 1280}, "height": {"ideal": 720}},
-        "audio": False
-    },
-    async_processing=True
-)
-
-# Handle restart after app is initialized
-if st.session_state.reset_game and "ref" in processor_instance:
-    processor_instance["ref"].reset_game()
-    st.session_state.reset_game = False
+                        img[ry]()
