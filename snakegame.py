@@ -9,7 +9,8 @@ import time
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from cvzone.HandTrackingModule import HandDetector
 
-# ---------- Snake Game Class ----------
+
+# ---------- Snake Game ----------
 class SnakeGame:
     def __init__(self, path_food, food_count=3):
         self.points = []
@@ -31,41 +32,45 @@ class SnakeGame:
         self.food_points = [(random.randint(100, 1000), random.randint(100, 500)) for _ in range(self.food_count)]
 
     def update(self, current_head, img):
-        px, py = self.prev_snake_head
-        cx, cy = current_head
-        dist = math.hypot(px - cx, py - cy)
-        self.length.append(dist)
-        self.current_length += dist
-        self.prev_snake_head = cx, cy
-        self.points.append([cx, cy])
+        try:
+            px, py = self.prev_snake_head
+            cx, cy = current_head
+            dist = math.hypot(px - cx, py - cy)
+            self.length.append(dist)
+            self.current_length += dist
+            self.prev_snake_head = cx, cy
+            self.points.append([cx, cy])
 
-        while self.current_length > self.allowed_length and self.length:
-            self.current_length -= self.length[0]
-            self.length.pop(0)
-            self.points.pop(0)
+            while self.current_length > self.allowed_length and self.length:
+                self.current_length -= self.length[0]
+                self.length.pop(0)
+                self.points.pop(0)
 
-        for food_index, (rx, ry) in enumerate(self.food_points):
-            if rx - self.wfood // 2 < cx < rx + self.wfood // 2 and ry - self.hfood // 2 < cy < ry + self.hfood // 2:
-                self.food_points[food_index] = (random.randint(100, 1000), random.randint(100, 500))
-                self.allowed_length += 40
-                self.score += 1
+            for food_index, (rx, ry) in enumerate(self.food_points):
+                if rx - self.wfood // 2 < cx < rx + self.wfood // 2 and ry - self.hfood // 2 < cy < ry + self.hfood // 2:
+                    self.food_points[food_index] = (random.randint(100, 1000), random.randint(100, 500))
+                    self.allowed_length += 40
+                    self.score += 1
 
-        if len(self.points) > 1:
-            for i in range(1, len(self.points)):
-                cv2.circle(img, tuple(self.points[i - 1]), 10, (255, 0, 0), -1)
+            if len(self.points) > 1:
+                for i in range(1, len(self.points)):
+                    cv2.circle(img, tuple(self.points[i - 1]), 10, (255, 0, 0), -1)
 
-        if self.points:
-            cv2.circle(img, tuple(self.points[-1]), 10, (0, 0, 255), -1)
+            if self.points:
+                cv2.circle(img, tuple(self.points[-1]), 10, (0, 0, 255), -1)
 
-        if len(self.points) >= 3:
-            pts = np.array(self.points[:-2], np.int32).reshape(-1, 1, 2)
-            cv2.polylines(img, [pts], False, (0, 255, 0), 6)
-            mdist = cv2.pointPolygonTest(pts, (cx, cy), True)
-            if -1 <= mdist <= 1:
-                self.game_over = True
+            if len(self.points) >= 3:
+                pts = np.array(self.points[:-2], np.int32).reshape(-1, 1, 2)
+                cv2.polylines(img, [pts], False, (0, 255, 0), 6)
+                mdist = cv2.pointPolygonTest(pts, (cx, cy), True)
+                if -1 <= mdist <= 1:
+                    self.game_over = True
 
-        for rx, ry in self.food_points:
-            img = cvzone.overlayPNG(img, self.food, (rx - self.wfood // 2, ry - self.hfood // 2))
+            for rx, ry in self.food_points:
+                img = cvzone.overlayPNG(img, self.food, (rx - self.wfood // 2, ry - self.hfood // 2))
+
+        except Exception as e:
+            print("❌ Snake update error:", e)
 
         return img
 
@@ -74,43 +79,47 @@ class SnakeGame:
 class GameProcessor(VideoProcessorBase):
     def __init__(self):
         self.detector = HandDetector(detectionCon=0.5, maxHands=1)
-        self.prev_time = time.time()
         self.game = SnakeGame("apple_00.png", food_count=3)
+        self.last_time = time.time()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
 
-        curr_time = time.time()
-        run_game = (curr_time - self.prev_time) > 0.1
+        try:
+            # Limit FPS to ~10
+            current_time = time.time()
+            if current_time - self.last_time > 0.1:
+                self.last_time = current_time
 
-        if run_game:
-            self.prev_time = curr_time
-            hands, _ = self.detector.findHands(img, draw=False)
-            if hands:
-                lmList = hands[0]["lmList"]
-                x, y = lmList[8][0], lmList[8][1]
-                img = self.game.update((x, y), img)
-            else:
-                cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
-                img = self.game.update(self.game.prev_snake_head, img)
+                hands, _ = self.detector.findHands(img, draw=False)
+                if hands:
+                    lmList = hands[0]["lmList"]
+                    x, y = lmList[8][0], lmList[8][1]
+                    img = self.game.update((x, y), img)
+                else:
+                    img = self.game.update(self.game.prev_snake_head, img)
+                    cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
 
-            self.game.top_score = max(self.game.top_score, self.game.score)
-            cvzone.putTextRect(img, f"Score: {self.game.score}", [50, 30], scale=2, thickness=2, offset=5)
-            cvzone.putTextRect(img, f"Top: {self.game.top_score}", [900, 30], scale=2, thickness=2, offset=5)
+                self.game.top_score = max(self.game.top_score, self.game.score)
+                cvzone.putTextRect(img, f"Score: {self.game.score}", [50, 30], scale=2, thickness=2, offset=5)
+                cvzone.putTextRect(img, f"Top: {self.game.top_score}", [900, 30], scale=2, thickness=2, offset=5)
 
-            if self.game.game_over:
-                cvzone.putTextRect(img, "Game Over", [400, 250], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
+                if self.game.game_over:
+                    cvzone.putTextRect(img, "Game Over", [400, 250], scale=3, thickness=3, offset=10,
+                                       colorT=(255, 255, 255), colorR=(255, 0, 0))
+
+        except Exception as e:
+            print("❌ recv() error:", e)
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-# ---------- Streamlit UI ----------
+# ---------- Streamlit App ----------
 st.set_page_config(page_title="Snake Game", layout="centered")
 st.title("🐍 Snake Game - Hand Gesture Controlled")
-st.markdown("Use your **index finger** 🖐️ to control the snake. Eat 🍎 and avoid crashing!")
+st.markdown("Use your **index finger** 🖐️ to move the snake. Eat 🍎 and avoid crashing!")
 
-# ---------- WebRTC Camera ----------
 webrtc_streamer(
     key="snake-game",
     video_processor_factory=GameProcessor,
