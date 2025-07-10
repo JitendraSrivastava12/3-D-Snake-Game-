@@ -38,6 +38,10 @@ class SnakeGame:
         self.food_points = [(random.randint(100, 1000), random.randint(100, 500)) for _ in range(self.food_count)]
 
     def update(self, current_head, img):
+        if self.game_over:
+            cv2.putText(img, "Game Over", (400, 250), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 0, 255), 5)
+            return img
+
         px, py = self.prev_snake_head
         cx, cy = current_head
         cx = int(0.7 * px + 0.3 * cx)  # Smooth X
@@ -88,7 +92,7 @@ class SnakeGame:
         return img
 
 
-# ---------- Raw MediaPipe Processor ----------
+# ---------- MediaPipe Hand Tracking Processor ----------
 class GameProcessor(VideoProcessorBase):
     def __init__(self):
         self.hands = mp.solutions.hands.Hands(
@@ -98,7 +102,6 @@ class GameProcessor(VideoProcessorBase):
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
-        self.draw = mp.solutions.drawing_utils
         self.reset_game()
 
     def reset_game(self):
@@ -127,12 +130,11 @@ class GameProcessor(VideoProcessorBase):
                     img = self.game.update(self.game.prev_snake_head, img)
                     cv2.putText(img, "Show Your Hand!", (300, 300), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
-                self.game.top_score = max(self.game.top_score, self.game.score)
+                if not self.game.game_over:
+                    self.game.top_score = max(self.game.top_score, self.game.score)
+
                 cv2.putText(img, f"Score: {self.game.score}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
                 cv2.putText(img, f"Top: {self.game.top_score}", (900, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 255), 3)
-
-                if self.game.game_over:
-                    cv2.putText(img, "Game Over", (400, 250), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 0, 255), 5)
 
         except Exception as e:
             print("❌ recv error:", e)
