@@ -85,7 +85,7 @@ class SnakeGame:
                         img[ry - 25:ry + 25, rx - 25:rx + 25, c][mask] = overlay_img[:, :, c][mask]
                 else:
                     cv2.rectangle(img, (rx - 25, ry - 25), (rx + 25, ry + 25), (0, 255, 0), -1)
-            except Exception as e:
+            except:
                 cv2.rectangle(img, (rx - 20, ry - 20), (rx + 20, ry + 20), (0, 255, 0), -1)
 
         return img
@@ -100,6 +100,7 @@ class GameProcessor(VideoProcessorBase):
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
+        self.should_reset = False
         self.reset_game()
 
     def reset_game(self):
@@ -107,6 +108,10 @@ class GameProcessor(VideoProcessorBase):
         self.last_time = time.time()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        if self.should_reset:
+            self.reset_game()
+            self.should_reset = False
+
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
 
@@ -150,12 +155,6 @@ st.set_page_config(page_title="Snake Game", layout="centered")
 st.title("🐍 Snake Game - Hand Gesture Controlled")
 st.markdown("Use your **index finger** 🖐️ to move the snake. Eat 🍎 and avoid crashing!")
 
-if "reset_game" not in st.session_state:
-    st.session_state.reset_game = False
-
-if st.button("🔁 Restart Game"):
-    st.session_state.reset_game = True
-
 processor_instance = {}
 
 def processor_factory():
@@ -163,7 +162,7 @@ def processor_factory():
     processor_instance["ref"] = processor
     return processor
 
-ctx = webrtc_streamer(
+webrtc_ctx = webrtc_streamer(
     key="snake-game",
     video_processor_factory=processor_factory,
     media_stream_constraints={
@@ -173,6 +172,6 @@ ctx = webrtc_streamer(
     async_processing=True
 )
 
-if st.session_state.reset_game and "ref" in processor_instance:
-    processor_instance["ref"].reset_game()
-    st.session_state.reset_game = False
+# ✅ Working Restart Button
+if st.button("🔁 Restart Game") and "ref" in processor_instance:
+    processor_instance["ref"].should_reset = True
