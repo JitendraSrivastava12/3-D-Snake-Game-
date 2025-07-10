@@ -1,13 +1,12 @@
 import cv2
 import numpy as np
 import math
-import cvzone
 import random
 import streamlit as st
 import av
 import time
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-from cvzone.HandTrackingModule import HandDetector
+import mediapipe as mp
 
 # ---------- Snake Game ----------
 class SnakeGame:
@@ -58,9 +57,8 @@ class SnakeGame:
                 self.allowed_length += 40
                 self.score += 1
 
-        if len(self.points) > 1:
-            for i in range(1, len(self.points)):
-                cv2.circle(img, tuple(self.points[i - 1]), 10, (255, 0, 0), -1)
+        for i in range(1, len(self.points)):
+            cv2.circle(img, tuple(self.points[i - 1]), 10, (255, 0, 0), -1)
 
         if self.points:
             cv2.circle(img, tuple(self.points[-1]), 10, (0, 0, 255), -1)
@@ -74,17 +72,31 @@ class SnakeGame:
 
         for rx, ry in self.food_points:
             try:
-                img = cvzone.overlayPNG(img, self.food, (rx - self.wfood // 2, ry - self.hfood // 2))
+                # fallback draw if PNG fails
+                if self.food.shape[2] == 4:
+                    overlay_img = self.food[:, :, :3]
+                    mask = self.food[:, :, 3] > 0
+                    for c in range(3):
+                        img[ry - 25:ry + 25, rx - 25:rx + 25, c][mask] = overlay_img[:, :, c][mask]
+                else:
+                    cv2.rectangle(img, (rx - 25, ry - 25), (rx + 25, ry + 25), (0, 255, 0), -1)
             except:
                 cv2.rectangle(img, (rx - 20, ry - 20), (rx + 20, ry + 20), (0, 255, 0), -1)
 
         return img
 
 
-# ---------- Video Processor ----------
+# ---------- Raw MediaPipe Hand Tracking (No cvzone) ----------
 class GameProcessor(VideoProcessorBase):
     def __init__(self):
-        self.detector = HandDetector(detectionCon=0.5, maxHands=1)
+        self.hands = mp.solutions.hands.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            model_complexity=0,         # ✅ CPU only (no GPU)
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        self.draw = mp.solutions.drawing_utils
         self.game = SnakeGame()
         self.last_time = time.time()
 
@@ -97,27 +109,25 @@ class GameProcessor(VideoProcessorBase):
             if current_time - self.last_time > 0.1:
                 self.last_time = current_time
 
-                result = self.detector.findHands(img, draw=False)
-                if result and isinstance(result, tuple):
-                    hands = result[0]
-                    if hands:
-                        lmList = hands[0]["lmList"]
-                        x, y = lmList[8][0], lmList[8][1]
-                        img = self.game.update((x, y), img)
-                    else:
-                        img = self.game.update(self.game.prev_snake_head, img)
-                        cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
+                rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                results = self.hands.process(rgb)
+
+                if results.multi_hand_landmarks:
+                    hand = results.multi_hand_landmarks[0]
+                    h, w, _ = img.shape
+                    x = int(hand.landmark[8].x * w)
+                    y = int(hand.landmark[8].y * h)
+                    img = self.game.update((x, y), img)
                 else:
                     img = self.game.update(self.game.prev_snake_head, img)
-                    cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
+                    cv2.putText(img, "Show Your Hand!", (300, 300), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
                 self.game.top_score = max(self.game.top_score, self.game.score)
-                cvzone.putTextRect(img, f"Score: {self.game.score}", [50, 30], scale=2, thickness=2, offset=5)
-                cvzone.putTextRect(img, f"Top: {self.game.top_score}", [900, 30], scale=2, thickness=2, offset=5)
+                cv2.putText(img, f"Score: {self.game.score}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+                cv2.putText(img, f"Top: {self.game.top_score}", (900, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 255), 3)
 
                 if self.game.game_over:
-                    cvzone.putTextRect(img, "Game Over", [400, 250], scale=3, thickness=3, offset=10,
-                                       colorT=(255, 255, 255), colorR=(255, 0, 0))
+                    cv2.putText(img, "Game Over", (400, 250), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 0, 255), 5)
 
         except Exception as e:
             print("❌ recv error:", e)
