@@ -84,7 +84,8 @@ class SnakeGame:
 # ---------- Video Processor ----------
 class GameProcessor(VideoProcessorBase):
     def __init__(self):
-        self.detector = HandDetector(detectionCon=0.5, maxHands=1)
+        # ✅ modelComplexity=0 disables GPU/OpenGL (fixes EGL errors)
+        self.detector = HandDetector(detectionCon=0.5, maxHands=1, modelComplexity=0)
         self.game = SnakeGame()
         self.last_time = time.time()
 
