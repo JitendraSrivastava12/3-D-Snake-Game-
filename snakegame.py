@@ -39,7 +39,7 @@ class SnakeGame:
 
     def update(self, current_head, img):
         if self.game_over:
-            return img  # Game paused
+            return img
 
         px, py = self.prev_snake_head
         cx, cy = current_head
@@ -76,7 +76,6 @@ class SnakeGame:
                 self.allowed_length += 40
                 self.score += 1
 
-        # ✅ Safe food drawing
         for rx, ry in self.food_points:
             try:
                 if self.food.shape[2] == 4:
@@ -130,4 +129,50 @@ class GameProcessor(VideoProcessorBase):
                         self.game.top_score = max(self.game.top_score, self.game.score)
                 else:
                     cv2.putText(img, "Show Your Hand!", (300, 300),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+
+                cv2.putText(img, f"Score: {self.game.score}", (50, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+                cv2.putText(img, f"Top: {self.game.top_score}", (900, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 255), 3)
+
+                if self.game.game_over:
+                    cv2.putText(img, "Game Over", (400, 250),
+                                cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 0, 255), 5)
+
+        except Exception as e:
+            print("❌ recv error:", e)
+
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+# ---------- Streamlit UI ----------
+st.set_page_config(page_title="Snake Game", layout="centered")
+st.title("🐍 Snake Game - Hand Gesture Controlled")
+st.markdown("Use your **index finger** 🖐️ to move the snake. Eat 🍎 and avoid crashing!")
+
+if "reset_game" not in st.session_state:
+    st.session_state.reset_game = False
+
+if st.button("🔁 Restart Game"):
+    st.session_state.reset_game = True
+
+processor_instance = {}
+
+def processor_factory():
+    processor = GameProcessor()
+    processor_instance["ref"] = processor
+    return processor
+
+ctx = webrtc_streamer(
+    key="snake-game",
+    video_processor_factory=processor_factory,
+    media_stream_constraints={
+        "video": {"width": {"ideal": 1280}, "height": {"ideal": 720}},
+        "audio": False
+    },
+    async_processing=True
+)
+
+if st.session_state.reset_game and "ref" in processor_instance:
+    processor_instance["ref"].reset_game()
+    st.session_state.reset_game = False
