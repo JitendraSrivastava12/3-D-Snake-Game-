@@ -8,7 +8,7 @@ import av
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from cvzone.HandTrackingModule import HandDetector
 
-# Game logic class
+# --- Snake Game Class ---
 class SnakeGame:
     def __init__(self, path_food, food_count=3):
         self.points = []
@@ -65,31 +65,60 @@ class SnakeGame:
         for rx, ry in self.food_points:
             img = cvzone.overlayPNG(img, self.food, (rx - self.wfood // 2, ry - self.hfood // 2))
 
-        text = "Game Over" if self.game_over else f"Score: {self.score}"
-        cvzone.putTextRect(img, text, [70, 30], scale=3, thickness=3, offset=7)
-
         return img
 
-# Streamlit video transformer
+# --- Streamlit Session State Init ---
+if "game" not in st.session_state:
+    st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
+if "top_score" not in st.session_state:
+    st.session_state["top_score"] = 0
+
+# --- Restart Button ---
+col1, col2 = st.columns([1, 3])
+with col1:
+    if st.button("🔄 Restart"):
+        st.session_state["top_score"] = max(st.session_state["top_score"], st.session_state["game"].score)
+        st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
+
+# --- Title and Instructions ---
+st.title("🐍 Snake Game - Hand Gesture Controlled")
+st.markdown("""
+Control the snake using your **index finger** 🖐️  
+Eat 🍎 food and avoid hitting yourself.  
+**Pinch gesture** not required — just track finger movement.
+""")
+
+# --- Streamlit Video Class ---
 class GameTransformer(VideoTransformerBase):
     def __init__(self):
-        self.game = SnakeGame('apple_00.png', food_count=3)
         self.detector = HandDetector(detectionCon=0.5, maxHands=1)
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
-        hands, img = self.detector.findHands(img, draw=False)
+        hands, _ = self.detector.findHands(img, draw=False)
         if hands:
             lmList = hands[0]["lmList"]
             x, y = lmList[8][0], lmList[8][1]
-            img = self.game.update((x, y), img)
+            img = st.session_state["game"].update((x, y), img)
+        else:
+            cvzone.putTextRect(img, "Show Your Hand!", [200, 250], scale=2, thickness=2, offset=8, colorR=(0, 0, 0))
+
+        # Update top score
+        current_score = st.session_state["game"].score
+        if current_score > st.session_state["top_score"]:
+            st.session_state["top_score"] = current_score
+
+        # Show scores
+        cvzone.putTextRect(img, f"Score: {current_score}", [50, 30], scale=2, thickness=2, offset=5)
+        cvzone.putTextRect(img, f"Top: {st.session_state['top_score']}", [400, 30], scale=2, thickness=2, offset=5)
+
+        if st.session_state["game"].game_over:
+            cvzone.putTextRect(img, "Game Over", [180, 200], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
+
         return img
 
-# UI
-st.title("🐍 Snake Game with Hand Tracking")
-st.markdown("Use your index finger to control the snake. Pinch food to eat!")
-
+# --- WebRTC Streamer ---
 webrtc_streamer(
     key="snake-game",
     video_transformer_factory=GameTransformer,
@@ -97,5 +126,22 @@ webrtc_streamer(
         "video": {"width": {"ideal": 640}, "height": {"ideal": 480}},
         "audio": False,
     },
-    async_processing=True,
+    async_processing=True
 )
+
+# --- Optional TTS on Game Over ---
+if st.session_state["game"].game_over:
+    st.markdown(
+        """
+        <script>
+        if (!window.hasSpoken) {
+            const utter = new SpeechSynthesisUtterance("Game Over. Click Restart to play again.");
+            speechSynthesis.speak(utter);
+            window.hasSpoken = true;
+        }
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    st.markdown("<script>window.hasSpoken = false;</script>", unsafe_allow_html=True)
