@@ -6,10 +6,10 @@ import random
 import streamlit as st
 import av
 import time
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from cvzone.HandTrackingModule import HandDetector
 
-# Snake Game Class
+# ---------- Snake Game Class ----------
 class SnakeGame:
     def __init__(self, path_food, food_count=3):
         self.points = []
@@ -68,62 +68,70 @@ class SnakeGame:
 
         return img
 
-# --- Streamlit UI ---
+
+# ---------- Streamlit UI ----------
+st.set_page_config(page_title="Snake Game", layout="centered")
+
 if "game" not in st.session_state:
     st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
 if "top_score" not in st.session_state:
     st.session_state["top_score"] = 0
 
 st.title("🐍 Snake Game - Hand Gesture Controlled")
-st.markdown("Use your **index finger** to control the snake. Eat 🍎 and avoid crashing!")
+st.markdown("Use your **index finger** 🖐️ to control the snake. Eat 🍎 and avoid crashing!")
 
-if st.button("🔄 Restart"):
+if st.button("🔄 Restart Game"):
     st.session_state["top_score"] = max(st.session_state["top_score"], st.session_state["game"].score)
     st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
 
-# --- Video Transformer ---
-class GameTransformer(VideoTransformerBase):
+
+# ---------- Video Processor Class ----------
+class GameProcessor(VideoProcessorBase):
     def __init__(self):
         self.detector = HandDetector(detectionCon=0.5, maxHands=1)
         self.prev_time = time.time()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        img = frame.to_ndarray(format="bgr24")
+        img = cv2.flip(img, 1)
+
+        curr_time = time.time()
+        run_game = (curr_time - self.prev_time) > 0.1
+
         try:
-            img = frame.to_ndarray(format="bgr24")
-            img = cv2.flip(img, 1)
+            if "game" not in st.session_state:
+                st.session_state["game"] = SnakeGame("apple_00.png", food_count=3)
 
-            curr_time = time.time()
-            if curr_time - self.prev_time < 0.1:  # ~10 FPS
-                return av.VideoFrame.from_ndarray(img, format="bgr24")
-            self.prev_time = curr_time
+            if run_game:
+                self.prev_time = curr_time
+                hands, _ = self.detector.findHands(img, draw=False)
+                if hands:
+                    lmList = hands[0]["lmList"]
+                    x, y = lmList[8][0], lmList[8][1]
+                    img = st.session_state["game"].update((x, y), img)
+                else:
+                    cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
+                    img = st.session_state["game"].update(st.session_state["game"].prev_snake_head, img)
 
-            hands, _ = self.detector.findHands(img, draw=False)
-            if hands:
-                lmList = hands[0]["lmList"]
-                x, y = lmList[8][0], lmList[8][1]
-                img = st.session_state["game"].update((x, y), img)
-            else:
-                cvzone.putTextRect(img, "Show Your Hand!", [300, 300], scale=2, thickness=2, offset=8)
-                img = st.session_state["game"].update(st.session_state["game"].prev_snake_head, img)
+                score = st.session_state["game"].score
+                st.session_state["top_score"] = max(st.session_state["top_score"], score)
 
-            score = st.session_state["game"].score
-            st.session_state["top_score"] = max(st.session_state["top_score"], score)
+                cvzone.putTextRect(img, f"Score: {score}", [50, 30], scale=2, thickness=2, offset=5)
+                cvzone.putTextRect(img, f"Top: {st.session_state['top_score']}", [900, 30], scale=2, thickness=2, offset=5)
 
-            cvzone.putTextRect(img, f"Score: {score}", [50, 30], scale=2, thickness=2, offset=5)
-            cvzone.putTextRect(img, f"Top: {st.session_state['top_score']}", [900, 30], scale=2, thickness=2, offset=5)
+                if st.session_state["game"].game_over:
+                    cvzone.putTextRect(img, "Game Over", [400, 250], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
 
-            if st.session_state["game"].game_over:
-                cvzone.putTextRect(img, "Game Over", [400, 250], scale=3, thickness=3, offset=10, colorT=(255, 255, 255), colorR=(255, 0, 0))
-
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
         except Exception as e:
-            print("recv() error:", e)
-            return frame
+            print("[ERROR in recv()]", e)
 
-# --- WebRTC Streaming ---
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+
+# ---------- WebRTC Camera ----------
 webrtc_streamer(
     key="snake-game",
-    video_transformer_factory=GameTransformer,
+    video_processor_factory=GameProcessor,  # ✅ updated for latest version
     media_stream_constraints={
         "video": {"width": {"ideal": 1280}, "height": {"ideal": 720}},
         "audio": False
