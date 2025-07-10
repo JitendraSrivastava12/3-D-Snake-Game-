@@ -25,7 +25,7 @@ class SnakeGame:
         if self.food is None:
             print("⚠️ apple_00.png not found. Using green box.")
             self.food = np.zeros((50, 50, 4), dtype=np.uint8)
-            self.food[:, :, 1] = 255  # Green channel
+            self.food[:, :, 1] = 255
             self.hfood, self.wfood = 50, 50
         else:
             self.food = cv2.resize(self.food, (50, 50))
@@ -139,8 +139,9 @@ class GameProcessor(VideoProcessorBase):
                     if not self.game.game_over:
                         self.game.top_score = max(self.game.top_score, self.game.score)
                 else:
-                    cv2.putText(img, "Show Your Hand!", (300, 300),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+                    if not self.game.game_over:
+                        cv2.putText(img, "Show Your Hand!", (300, 300),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
                 cv2.putText(img, f"Score: {self.game.score}", (50, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
@@ -178,5 +179,6 @@ webrtc_ctx = webrtc_streamer(
     async_processing=True
 )
 
+# ✅ Final working Restart button
 if st.button("🔁 Restart Game") and "ref" in processor_instance:
     processor_instance["ref"].should_reset = True
